@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.30 (Racibórz Only - Real OSRM Routing)";
+const APP_VERSION = "SWDST 0.31 (Racibórz Only - Fixed OSRM Routing)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -286,11 +286,11 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// --- SILNIK PRAWDZIWEGO ROUTINGU DROGOWEGO OSRM ---
+// --- SILNIK PRAWDZIWEGO ROUTINGU DROGOWEGO OSRM Z BEZPIECZNYM FALLBACKIEM ---
 async function getRoadRouting(lat1, lon1, lat2, lon2) {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500); // Max 3.5 sekundy oczekiwania na OSRM
+        const timeoutId = setTimeout(() => controller.abort(), 2500); // Krótki timeout, aby aplikacja działała płynnie
         const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -298,14 +298,16 @@ async function getRoadRouting(lat1, lon1, lat2, lon2) {
             const data = await res.json();
             if (data.routes && data.routes.length > 0) {
                 const route = data.routes[0];
-                return {
-                    distanceKm: route.distance / 1000, // odległość drogowa w km
-                    durationSec: route.duration        // czas przejazdu w sekundach
-                };
+                if (route && typeof route.distance === 'number' && typeof route.duration === 'number') {
+                    return {
+                        distanceKm: route.distance / 1000,
+                        durationSec: route.duration
+                    };
+                }
             }
         }
     } catch (e) {}
-    return null; // Awaryjnie zwraca null, uruchamiając fallback
+    return null; // W razie błędu lub timeoutu zwraca null -> używa bezpiecznego fallbacku
 }
 
 async function getUnitProximityAsync(unitName, city) {
@@ -319,23 +321,20 @@ async function getUnitProximityAsync(unitName, city) {
     let travelSec = 10;
 
     if (unitLoc && tCoords) {
-        // Próba pobrania trasy po realnych drogach z OpenStreetMap (OSRM)
         const roadRoute = await getRoadRouting(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]);
-        if (roadRoute) {
+        if (roadRoute && !isNaN(roadRoute.durationSec) && roadRoute.durationSec > 0) {
             kmRounded = Math.max(1.0, Math.round(roadRoute.distanceKm * 10) / 10);
-            // Czas przejazdu wozem bojowym (uwzględniając sygnały uprzywilejowania, lekka korekta współczynnika prędkości)
-            travelSec = Math.max(8, Math.round(roadRoute.duration * 0.85));
+            travelSec = Math.max(8, Math.round(roadRoute.durationSec * 0.85));
         } else {
-            // Fallback (linia prosta + współczynnik krętości dróg)
             const fallbackDist = haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25;
             kmRounded = Math.max(1.2, Math.round(fallbackDist * 10) / 10);
-            travelSec = Math.max(10, Math.round(kmRounded * 45)); // ok. 45s na kilometr trasą
+            travelSec = Math.max(10, Math.round(kmRounded * 45));
         }
     }
     return { sec: travelSec, kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
 }
 
-// Synchroniczna wersja pomocnicza do natychmiastowego wywołania z domyślnym fallbackiem
+// Synchroniczna wersja awaryjna
 function getUnitProximity(unitName, city) {
     const firstUnitKey = Object.keys(unitExactLocations)[0];
     const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
@@ -1122,7 +1121,7 @@ async function addCustomUnit(type) {
     renderUnits(); renderSiSManagerList(); updateMapMarkers(); saveSimulationState();
 }
 
-function addCustomVehicle(type) {
+async function addCustomVehicle(type) {
     const targetArray = type === 'PSP' ? unitsPSP : unitsOSP;
     const unitName = prompt(`Podaj dokładną nazwę jednostki ${type}:`, targetArray[0]?.name || "");
     if (!unitName) return;
@@ -1702,8 +1701,8 @@ function acceptCPRToEvent() {
 }
 
 function formatMMSS(sec) {
-    if (sec < 0) return "Zabezpieczenie rejonu (PZR)";
-    const m = Math.floor(sec / 60), s = sec % 60;
+    if (isNaN(sec) || sec < 0) return "Zabezpieczenie rejonu (PZR)";
+    const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
     return `${m}:${s < 10 ? '0' : ''}${s} min`;
 }
 
@@ -1977,7 +1976,7 @@ function openEditEventModal(id) {
     if(modalEl) modalEl.style.display = 'flex';
 }
 
-// --- OKNO DYSPONOWANIA Z ROUTINGIEM OSRM ---
+// --- OKNO DYSPONOWANIA Z ROUTINGIEM OSRM I PRAWIDŁOWYM SORTOWANIEM ---
 async function openDispatchModal() {
     const container = document.getElementById('dispatch-list');
     const infoBar = document.getElementById('dispatch-info-bar');
@@ -1994,16 +1993,16 @@ async function openDispatchModal() {
     container.innerHTML = `<div style="padding: 15px; text-align: center; color: #555; font-weight: bold;">⏳ Pobieranie realnych tras drogowych z OpenStreetMap...</div>`;
     if(modalDisp) modalDisp.style.display = 'flex';
 
-    // Asynchroniczne wyliczenie odległości po drogach dla wszystkich jednostek
+    const allUnits = [...unitsPSP, ...unitsOSP].filter(u => u.vehicles.length > 0);
+    
     const unitsWithProximity = await Promise.all(
-        [...unitsPSP, ...unitsOSP]
-            .filter(u => u.vehicles.length > 0)
-            .map(async u => {
-                const prox = await getUnitProximityAsync(u.name, targetCity);
-                return { ...u, ...prox };
-            })
+        allUnits.map(async u => {
+            const prox = await getUnitProximityAsync(u.name, targetCity);
+            return { ...u, ...prox };
+        })
     );
 
+    // Sortowanie alfabetyczne po odległości (najbliższe pierwsze)
     unitsWithProximity.sort((a, b) => a.sec - b.sec);
 
     if(infoBar) {
@@ -2108,7 +2107,6 @@ function saveEvent() {
     const streetInput = document.getElementById('inp-ev-street');
     const streetVal = streetInput ? streetInput.value.trim() : '';
 
-    // Asynchroniczne przeliczenie tras dla wybranych wozów przed zapisem
     (async () => {
         for (const sv of selectedVehicles) {
             if (!sv.phase) {
@@ -2188,7 +2186,7 @@ function triggerEventFinishAndReturn(ev) {
 
         if (sv.phase === 'ONSITE' || sv.phase === 'TRAVEL') {
             sv.phase = 'RETURN';
-            sv.returnTime = sv.baseRouteSeconds || calculateRouteTravelSeconds(sv.unitName, ev.city);
+            sv.returnTime = sv.baseRouteSeconds || getUnitProximity(sv.unitName, ev.city).sec;
             const approxMin = Math.max(1, Math.round(sv.returnTime / 60));
 
             [...unitsPSP, ...unitsOSP].forEach(u => {
