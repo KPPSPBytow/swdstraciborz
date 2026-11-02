@@ -111,7 +111,7 @@ osp: [
 [".OSP KSRG Kobyla", "Kobyla", "ul. Główna 78, 44-285 Kobyla", 50.090617, 18.295590, true, [["569[S]37", "GCBA-Rt 4/32 Jelcz 415/Bonex", 6], ["569[S]38", "GLBM 1,5/20 Mitshubishi Fuso/Dragon", 6]]],
 [".OSP KSRG Łańce", "Łańce", "ul. Strażacka 2, 44-285 Łańce", 50.082178, 18.334188, true, [["569[S]40", "GCBARt 5,7/32 Jelcz 325/PS Szczęśniak", 4], ["569[S]41", "GLM-Rt Mercedes Sprinter", 6]]],
 [".OSP Pogrzebień", "Pogrzebień", "ul. Grabowa 4, 44-285 Pogrzebień", 50.067700, 18.300571, true, [["567[S]40", "GBA-Rt 4,1/16 Volvo FL 320/Bocar", 6], ["567[S]42", "SLRr Land Rover 110", 9]]],
-[".OSP Rzuchów", "Rzuchów", "ul. Miarki 8B, 44-285 Rzuchów", 550.070094802754376, 18.356879083298537, true, [["567[S]43", "GLBA-Rt 0,2/0,5 Volkswagen Crafter/PERFEKT", 6], ["567[S]44", "GBA 3/16 Renault S170/Camiva", 6]]],
+[".OSP Rzuchów", "Rzuchów", "ul. Miarki 8B, 44-285 Rzuchów", 50.07003626914419, 18.35689517655173, true, [["567[S]43", "GLBA-Rt 0,2/0,5 Volkswagen Crafter/PERFEKT", 6], ["567[S]44", "GBA 3/16 Renault S170/Camiva", 6]]],
 [".OSP KSRG Krzanowice", "Krzanowice", "ul. Morawska 18, 47-470 Krzanowice", 50.018297, 18.123197, true, [["569[S]52", "GBA-Rt 3/30 Volvo FL 280/Bocar", 6], ["569[S]53", "GCBA 5/24 Mercedes-Benz 1626", 3]]],
 [".OSP KSRG Bojanów", "Bojanów", "ul. Borucka 3, 47-470 Bojanów", 50.030783, 18.162002, true, [["569[S]43", "GCBA 6/32 Jelcz 325 DS/JZS", 4], ["569[S]44", "GBA-Rt 4,1/16 Volvo FL 280/Bocar", 6]]],
 [".OSP Borucin", "Borucin", "ul. Mikołaja Kopernika 48, 47-470 Borucin", 50.004804, 18.156952, true, [["567[S]48", "GBA 2,4/16 Mercedes", 6]]],
