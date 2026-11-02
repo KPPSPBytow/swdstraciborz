@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.33 (Racibórz Only - Smooth Moving Units & OSRM)";
+const APP_VERSION = "SWDST 0.34 (Racibórz Only - OSRM Road Geometry Routing)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -286,12 +286,13 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// --- SILNIK PRAWDZIWEGO ROUTINGU DROGOWEGO OSRM Z BEZPIECZNYM FALLBACKIEM ---
-async function getRoadRouting(lat1, lon1, lat2, lon2) {
+// --- SILNIK ROUTINGU OSRM Z PEŁNĄ GEOMETRIĄ TRASY (DROGI) ---
+async function getRoadRouting(lat1, lon1, lat2, lon2, withGeometry = true) {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const geomParam = withGeometry ? '?overview=full&geometries=geojson' : '?overview=false';
+        const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}${geomParam}`;
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
@@ -299,9 +300,15 @@ async function getRoadRouting(lat1, lon1, lat2, lon2) {
             if (data.routes && data.routes.length > 0) {
                 const route = data.routes[0];
                 if (route && typeof route.distance === 'number' && typeof route.duration === 'number') {
+                    let coordinates = null;
+                    if (withGeometry && route.geometry && route.geometry.coordinates) {
+                        // OSRM zwraca [lng, lat], zamieniamy na [lat, lng] dla Leafleta
+                        coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
+                    }
                     return {
                         distanceKm: route.distance / 1000,
-                        durationSec: route.duration
+                        durationSec: route.duration,
+                        coordinates: coordinates
                     };
                 }
             }
@@ -310,28 +317,30 @@ async function getRoadRouting(lat1, lon1, lat2, lon2) {
     return null;
 }
 
-async function getUnitProximityAsync(unitName, city) {
+async function getUnitProximityAsync(unitName, city, targetLat = null, targetLng = null) {
     const firstUnitKey = Object.keys(unitExactLocations)[0];
     const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
     const defaultTown = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].defaultTown : "Racibórz";
     const targetTown = Object.keys(gpsCoords).find(c => c.toLowerCase() === (city || "").trim().toLowerCase()) || defaultTown;
-    const tCoords = gpsCoords[targetTown] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+    const tCoords = (targetLat && targetLng) ? [targetLat, targetLng] : (gpsCoords[targetTown] || COUNTY_PROFILES[currentCountyId].mapCenter);
 
     let kmRounded = 1.5;
     let travelSec = 10;
+    let routeCoords = null;
 
     if (unitLoc && tCoords) {
-        const roadRoute = await getRoadRouting(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]);
+        const roadRoute = await getRoadRouting(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1], true);
         if (roadRoute && !isNaN(roadRoute.durationSec) && roadRoute.durationSec > 0) {
             kmRounded = Math.max(1.0, Math.round(roadRoute.distanceKm * 10) / 10);
             travelSec = Math.max(8, Math.round(roadRoute.durationSec * 0.85));
+            routeCoords = roadRoute.coordinates;
         } else {
             const fallbackDist = haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25;
             kmRounded = Math.max(1.2, Math.round(fallbackDist * 10) / 10);
             travelSec = Math.max(10, Math.round(kmRounded * 45));
         }
     }
-    return { sec: travelSec, kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
+    return { sec: travelSec, kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km`, coordinates: routeCoords };
 }
 
 function getUnitProximity(unitName, city) {
@@ -339,7 +348,7 @@ function getUnitProximity(unitName, city) {
     const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
     const defaultTown = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].defaultTown : "Racibórz";
     const targetTown = Object.keys(gpsCoords).find(c => c.toLowerCase() === (city || "").trim().toLowerCase()) || defaultTown;
-    const tCoords = gpsCoords[targetTown] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+    const tCoords = gpsCoords[targetTown] || COUNTY_PROFILES[currentCountyId].mapCenter;
 
     const dist = unitLoc ? haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25 : 2.5;
     const kmRounded = Math.max(1.2, Math.round(dist * 10) / 10);
@@ -746,7 +755,7 @@ async function geocodeEventAddress(ev) {
     const coords = await resolveExactCoordinates(rawStreet, ev.city);
     if (coords) { ev.lat = coords.lat; ev.lng = coords.lng; }
     else if (!ev.lat || !ev.lng) {
-        const fallback = gpsCoords[ev.city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+        const fallback = gpsCoords[ev.city] || COUNTY_PROFILES[currentCountyId].mapCenter;
         ev.lat = fallback[0]; ev.lng = fallback[1];
     }
     updateMapMarkers();
@@ -763,7 +772,7 @@ function focusEventOnMap(evId) {
     }, 250);
 }
 
-// --- MAPA OPERACYJNA LEAFLET Z PŁYNNYM RUCHEM ZASTĘPÓW ---
+// --- MAPA OPERACYJNA LEAFLET Z RUCHEM PO DROGACH (OSRM GEOMETRY) ---
 let leafletMap = null, mapMarkersLayer = null;
 
 function ensureLeafletLoaded(callback) {
@@ -826,10 +835,10 @@ function updateMapMarkers() {
         mapMarkersLayer.addLayer(marker);
     });
 
-    // 2. Aktywne zdarzenia oraz płynnie poruszające się zastępy (z kryptonimem)
+    // 2. Aktywne zdarzenia oraz poruszające się po drogach zastępy
     events.forEach(ev => {
         if (ev.status !== 'ACTIVE') return;
-        const fallback = gpsCoords[ev.city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+        const fallback = gpsCoords[ev.city] || COUNTY_PROFILES[currentCountyId].mapCenter;
         const evLat = ev.lat || fallback[0], evLng = ev.lng || fallback[1];
 
         ev.vehicles.forEach(v => {
@@ -838,25 +847,41 @@ function updateMapMarkers() {
                 if (!unitLoc) return;
 
                 let progress = 0;
+                let currLat = evLat, currLng = evLng;
+
                 if (v.phase === 'TRAVEL') {
                     progress = Math.max(0, Math.min(1, 1 - (v.travelTime / v.baseRouteSeconds)));
-                    const currLat = unitLoc.lat + (evLat - unitLoc.lat) * progress;
-                    const currLng = unitLoc.lng + (evLng - unitLoc.lng) * progress;
+                    
+                    if (v.travelGeometry && v.travelGeometry.length > 0) {
+                        const idx = Math.min(v.travelGeometry.length - 1, Math.floor(progress * (v.travelGeometry.length - 1)));
+                        currLat = v.travelGeometry[idx][0];
+                        currLng = v.travelGeometry[idx][1];
+                    } else {
+                        currLat = unitLoc.lat + (evLat - unitLoc.lat) * progress;
+                        currLng = unitLoc.lng + (evLng - unitLoc.lng) * progress;
+                    }
 
                     const movingMarker = L.marker([currLat, currLng], {
                         icon: L.divIcon({
                             className: '',
-                            html: `<div style="transform:translate(-50%, -50%); background:#e74c3c; color:#ffffff; border:2px solid #78281f; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 8px rgba(0,0,0,0.6); animation: pulse 1s infinite;">🚒 ${v.id} (Dojazd)</div>`,
+                            html: `<div style="transform:translate(-50%, -50%); background:#e74c3c; color:#ffffff; border:2px solid #78281f; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 8px rgba(0,0,0,0.6);">🚒 ${v.id} (Dojazd)</div>`,
                             iconSize: [0, 0], iconAnchor: [0, 0]
                         })
                     });
-                    movingMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Dojazd do ${ev.city}</div>`);
+                    movingMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Dojazd drogą do ${ev.city}</div>`);
                     mapMarkersLayer.addLayer(movingMarker);
 
                 } else if (v.phase === 'RETURN') {
                     progress = Math.max(0, Math.min(1, 1 - (v.returnTime / v.baseRouteSeconds)));
-                    const currLat = evLat + (unitLoc.lat - evLat) * progress;
-                    const currLng = evLng + (unitLoc.lng - evLng) * progress;
+
+                    if (v.returnGeometry && v.returnGeometry.length > 0) {
+                        const idx = Math.min(v.returnGeometry.length - 1, Math.floor(progress * (v.returnGeometry.length - 1)));
+                        currLat = v.returnGeometry[idx][0];
+                        currLng = v.returnGeometry[idx][1];
+                    } else {
+                        currLat = evLat + (unitLoc.lat - evLat) * progress;
+                        currLng = evLng + (unitLoc.lng - evLng) * progress;
+                    }
 
                     const returnMarker = L.marker([currLat, currLng], {
                         icon: L.divIcon({
@@ -865,7 +890,7 @@ function updateMapMarkers() {
                             iconSize: [0, 0], iconAnchor: [0, 0]
                         })
                     });
-                    returnMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Powrót do bazy</div>`);
+                    returnMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Powrót drogą do bazy</div>`);
                     mapMarkersLayer.addLayer(returnMarker);
                 }
             }
@@ -1151,7 +1176,7 @@ async function addCustomUnit(type) {
     if (!name || !name.trim()) return;
     const town = prompt(`Podaj miejscowość stacjonowania jednostki:`, defTown) || defTown;
     const address = prompt(`Podaj dokładną ulicę i numer strażnicy:`, `ul. Strażacka 1, ${town}`) || town;
-    const tCoords = gpsCoords[town.trim()] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+    const tCoords = gpsCoords[town.trim()] || COUNTY_PROFILES[currentCountyId].mapCenter;
     unitExactLocations[name.trim()] = { town: town.trim(), address: address.trim(), lat: tCoords[0], lng: tCoords[1] };
 
     if (type === 'PSP') unitsPSP.push({ name: name.trim(), vehicles: [] });
@@ -1849,7 +1874,7 @@ function renderSelectedEventDetails() {
     sisBody.innerHTML = ev.vehicles.map(v => {
         let statusText = "";
         if (v.phase === 'PREP') statusText = `<span style="color: #d35400; font-weight: bold;">Alarmowanie / Wyjazd za ${v.prepTime}s</span>`;
-        else if (v.phase === 'TRAVEL') statusText = `<span style="color: #b36b00; font-weight: bold;">W drodze (${formatMMSS(v.travelTime)})</span>`;
+        else if (v.phase === 'TRAVEL') statusText = `<span style="color: #b36b00; font-weight: bold;">W drodze drogą (${formatMMSS(v.travelTime)})</span>`;
         else if (v.phase === 'ONSITE') {
             statusText = ev.type === 'PZR'
                 ? `<span style="color: #b38600; background:#fff8c4; padding:1px 4px; font-weight: bold;">Na zabezpieczeniu rejonu (PZR)</span>`
@@ -2017,7 +2042,7 @@ function openEditEventModal(id) {
     if(modalEl) modalEl.style.display = 'flex';
 }
 
-// --- OKNO DYSPONOWANIA Z ROUTINGIEM OSRM I PRAWIDŁOWYM SORTOWANIEM ---
+// --- OKNO DYSPONOWANIA Z GEOMETRIĄ TRASY DROGOWEJ OSRM ---
 async function openDispatchModal() {
     const container = document.getElementById('dispatch-list');
     const infoBar = document.getElementById('dispatch-info-bar');
@@ -2028,10 +2053,10 @@ async function openDispatchModal() {
     const targetCity = cityInput ? cityInput.value.trim() : "";
     
     if(infoBar) {
-        infoBar.innerHTML = targetCity ? `📍 Przeliczanie tras drogowych (OSRM) dla: <span style="color:#b30000;">${targetCity}</span>...` : `⚠️ Brak miejscowości`;
+        infoBar.innerHTML = targetCity ? `📍 Pobieranie geometrii dróg OSRM dla: <span style="color:#b30000;">${targetCity}</span>...` : `⚠️ Brak miejscowości`;
     }
 
-    container.innerHTML = `<div style="padding: 15px; text-align: center; color: #555; font-weight: bold;">⏳ Pobieranie realnych tras drogowych z OpenStreetMap...</div>`;
+    container.innerHTML = `<div style="padding: 15px; text-align: center; color: #555; font-weight: bold;">⏳ Wyznaczanie tras drogowych dla zastępów...</div>`;
     if(modalDisp) modalDisp.style.display = 'flex';
 
     const allUnits = [...unitsPSP, ...unitsOSP].filter(u => u.vehicles.length > 0);
@@ -2046,7 +2071,7 @@ async function openDispatchModal() {
     unitsWithProximity.sort((a, b) => a.sec - b.sec);
 
     if(infoBar) {
-        infoBar.innerHTML = targetCity ? `📍 Kolejność wg tras drogowych (OSRM) dla: <span style="color:#b30000;">${targetCity}</span>` : `⚠️ Brak miejscowości`;
+        infoBar.innerHTML = targetCity ? `📍 Trasy drogowe OSRM gotowe dla: <span style="color:#b30000;">${targetCity}</span>` : `⚠️ Brak miejscowości`;
     }
 
     container.innerHTML = '';
@@ -2081,7 +2106,7 @@ async function openDispatchModal() {
 
                 return `
                     <label class="dispatch-vehicle-item" style="cursor:${isBlocked ? 'not-allowed' : 'pointer'}; color:${isBlocked ? '#888888' : '#000000'}; ${isBlocked ? 'background:#f2f2f2; opacity:0.75;' : (pzrEv ? 'background:#fff8c4;' : '')}">
-                        <input type="checkbox" value="${v.id}" ${isAssignedToThisEvent ? 'checked' : ''} ${isBlocked ? 'disabled' : ''}>
+                        <input type="checkbox" value="${v.id}" data-unit="${u.name}" ${isAssignedToThisEvent ? 'checked' : ''} ${isBlocked ? 'disabled' : ''}>
                         <span class="status-dot ${v.status}"></span>
                         <span><b>${v.id}</b> - ${v.name}</span>
                         ${statusBadge}
@@ -2102,6 +2127,7 @@ async function confirmDispatch() {
 
     for (const cb of checkboxes) {
         const vehId = cb.value;
+        const unitName = cb.getAttribute('data-unit');
         const existing = selectedVehicles.find(sv => sv.id === vehId);
         if (existing) {
             newSelection.push(existing);
@@ -2113,9 +2139,13 @@ async function confirmDispatch() {
                     const prepSec = pzrEv ? (Math.floor(Math.random() * 5) + 1) : generateDeparturePrepSeconds(u.name);
                     const prox = await getUnitProximityAsync(u.name, targetCity);
                     const routeSec = prox.sec;
+                    const travelCoords = prox.coordinates || [];
+                    const returnCoords = [...travelCoords].reverse();
+
                     newSelection.push({
                         ...v, unitName: u.name, phase: 'PREP', prepTime: prepSec,
-                        travelTime: routeSec, baseRouteSeconds: routeSec, returnTime: routeSec
+                        travelTime: routeSec, baseRouteSeconds: routeSec, returnTime: routeSec,
+                        travelGeometry: travelCoords, returnGeometry: returnCoords
                     });
                     break;
                 }
@@ -2154,6 +2184,8 @@ function saveEvent() {
                 sv.prepTime = generateDeparturePrepSeconds(sv.unitName);
                 const prox = await getUnitProximityAsync(sv.unitName, city);
                 sv.travelTime = prox.sec; sv.baseRouteSeconds = prox.sec; sv.returnTime = prox.sec;
+                sv.travelGeometry = prox.coordinates || [];
+                sv.returnGeometry = [...sv.travelGeometry].reverse();
             }
         }
 
@@ -2171,7 +2203,7 @@ function saveEvent() {
             const timeInput = document.getElementById('inp-ev-time');
             const regInput = document.getElementById('inp-ev-region');
             const jrgInput = document.getElementById('inp-ev-jrg');
-            const fallback = gpsCoords[city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+            const fallback = gpsCoords[city] || COUNTY_PROFILES[currentCountyId].mapCenter;
             const calcDuration = calculateActionDurationSeconds(descVal, subtypeVal, typeVal);
             const defJrg = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].jrgList[0] : "JRG Racibórz";
 
@@ -2387,7 +2419,6 @@ function runSimulationTick() {
         }
     });
 
-    // Zawsze odświeżamy mapę w ticku, aby animacja ruchu zastępów była w pełni płynna
     renderUnits(); 
     renderEvents(); 
     updateMapMarkers(); 
