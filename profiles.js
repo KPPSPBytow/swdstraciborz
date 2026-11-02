@@ -85,20 +85,31 @@ const RAW_PROFILES = [
         ],
         psp: [
             ["JRG Racibórz", "Racibórz", "ul. Władysława Reymonta 8, 47-400 Racibórz", 50.094089, 18.218574, true, [
-                ["561[S]21", "GBA-Rt 3/27 Scania P360/WISS", 5], ["561[S]22", "GBA 2,5/16 Iveco EuroCargo 150-320/PS Szczęśniak", 3], ["561[S]25", "GCBA-Rt 5/32 Scania P410/WISS", 4],
-                ["561[S]40", "SLRt Renault Mascott/WISS", 1], ["561[S]51", "SCD-42 Iveco EuroCargo 180-320/Magirus", 1],
-                ["561[S]81", "SW 2000/40 + AS-9000/4 Mercedes Benz Atego 1218/Tramp", 1], ["561[S]90", "SLRr Ford Ranger", 1], ["561[S]X1", "Ładowarka Teleskopowa Dieci", 1], ["561[S]Ł1", " Łódź strumieniowa - QUICKSILVER", 0]
+                ["561[S]21", "GBA-Rt 3/27 Scania P360/WISS", 5], 
+                ["561[S]22", "GBA 2,5/16 Iveco EuroCargo 150-320/PS Szczęśniak", 3], 
+                ["561[S]25", "GCBA-Rt 5/32 Scania P410/WISS", 4],
+                ["561[S]40", "SLRt Renault Mascott/WISS", 1], 
+                ["561[S]51", "SCD-42 Iveco EuroCargo 180-320/Magirus", 1],
+                ["561[S]81", "SW 2000/40 + AS-9000/4 Mercedes Benz Atego 1218/Tramp", 1], 
+                ["561[S]90", "SLRr Ford Ranger", 1], 
+                ["561[S]X1", "Ładowarka Teleskopowa Dieci", 1], 
+                ["561[S]Ł1", "Łódź strumieniowa - QUICKSILVER", 0]
             ]],
             ["KP PSP Racibórz", "Racibórz", "ul. Władysława Reymonta 8, 47-400 Racibórz", 50.094089, 18.218574, true, [
-                ["560[S]81", "SLKw Volkswagen Crafter", 1], ["560[S]82", "SLKw BYD Seal", 1], ["560[S]84", "SLBus Renault Trafic III", 1], ["560[S]90", "SLOp Kia Sportage III", 1], ["560[S]91", "SLOp Skoda Octavia", 1], ["560[S]92", "SLRr Toyota Hilux/Bocar", 1]
+                ["560[S]81", "SLKw Volkswagen Crafter", 1], 
+                ["560[S]82", "SLKw BYD Seal", 1], 
+                ["560[S]84", "SLBus Renault Trafic III", 1], 
+                ["560[S]90", "SLOp Kia Sportage III", 1], 
+                ["560[S]91", "SLOp Skoda Octavia", 1], 
+                ["560[S]92", "SLRr Toyota Hilux/Bocar", 1]
             ]]
         ],
         osp: [
-            [".OSP KSRG Racibórz-Markowice", "Racibórz", "ul. Arki Bożka 20A, 47-400 Racibórz", 50.109748, 18.276390, true, [["569[S]31", "GBA 2/8 Mercedes Unimog U1300/Zigler", 3], ["569[S]32", "GBA-Rt 3/29 Volvo FL280/Bocar", 6], ["569[S]33", "SLRr VW Crafter", 9], ["569[S]Q1-31", " QUAD CF MOTO 520L", 1], ["569[S]Ł1-31", " Łódź Kontra 450 RCC", 1]]],
+            [".OSP KSRG Racibórz-Markowice", "Racibórz", "ul. Arki Bożka 20A, 47-400 Racibórz", 50.109748, 18.276390, true, [["569[S]31", "GBA 2/8 Mercedes Unimog U1300/Zigler", 3], ["569[S]32", "GBA-Rt 3/29 Volvo FL280/Bocar", 6], ["569[S]33", "SLRr VW Crafter", 9], ["569[S]Q1-31", "QUAD CF MOTO 520L", 1], ["569[S]Ł1-31", "Łódź Kontra 450 RCC", 1]]],
             [".OSP KSRG Racibórz-Brzezie", "Racibórz", "ul. Bitwy Olzańskiej 28, 47-400 Racibórz", 50.071633, 18.268751, true, [["569[S]28", "SLRr VW Amarok", 5], ["569[S]29", "GBA-Rt 4,5/30 MAN TGM 18.340 MotoTruck", 6], ["569[S]30", "GLBA 1/0,7 Ford Transit/Frank-Cars", 5]]],
             [".OSP KSRG Racibórz-Sudół", "Racibórz", "ul. Hulczyńska 164, 47-400 Racibórz", 50.052258, 18.195159, true, [["569[S]34", "GCBA 5/36 Scania P370 XT/Szczęśniak", 6], ["569[S]35", "SLRr Land Rover Defender 90", 6], ["569[S]36", "GLBA-Rt 1/0,7 Ford Transit/Szybicki", 6]]],
             [".OSP KSRG Racibórz-Miedonia", "Racibórz", "ul. Podmiejska 29, 47-400 Racibórz", 50.121745, 18.220343, true, [["569[S]61", "SLRr Land Rover Freelander 2", 5], ["569[S]62", "GBA-Rt 3,5/30 Mercedes Benz 1530/Bonex", 6], ["569[S]63", "GLBA 1/1,25 Iveco/SHL", 6]]],
-            [".OSP KSRG Kobyla", "Kobyla", "ul. Główna 78, 44-285 Kobyla", 50.090617, 18.295590, true, [["569[S]37", "GCBA-Rt 4/32 Jelcz 415/Bonex", 6], ["569[S]38", "GLBM 1,5/20 Mitshubishi Fuso/Dragon", 6]]],
+            [".OSP KSRG Kobyla", "Kobyla", "ul. Główna 78, 44-285 Kobyla", 50.090617, 18.295590, true, [["569[S]37", "GCBA-Rt 4/32 Jelcz 415/Bonex", 6], ["569[S]38", "GLBM 1,5/20 Mitsubishi Fuso/Dragon", 6]]],
             [".OSP KSRG Łańce", "Łańce", "ul. Strażacka 2, 44-285 Łańce", 50.08217823472441, 18.334188309042265, true, [["569[S]40", "GCBARt 5,7/32 Jelcz 325/PS Szczęśniak", 4], ["569[S]41", "GLM-Rt Mercedes Sprinter", 6]]],
             [".OSP Pogrzebień", "Pogrzebień", "ul. Grabowa 4, 44-285 Pogrzebień", 50.06770046606971, 18.300571569371233, true, [["567[S]40", "GBA-Rt 4,1/16 Volvo FL 320/Bocar", 6], ["567[S]42", "SLRr Land Rover 110", 9]]],
             [".OSP Rzuchów", "Pogrzebień", "ul. Grabowa 4, 44-285 Pogrzebień", 50.06770046606971, 18.300571569371233, true, [["567[S]43", "GLBA-Rt 0,2/0,5 Volkswagen Crafter/PERFEKT", 6], ["567[S]44", "GBA 3/16 Renault S170/Camiva", 6]]],
@@ -110,12 +121,12 @@ const RAW_PROFILES = [
             [".OSP Bieńkowice", "Bieńkowice", "ul. Raciborska 72, 47-451 Bieńkowice", 50.02250113655415, 18.213979158814716, true, [["567[S]67", "GBA-Rt 3/24 Volvo FL 280/WISS", 6], ["567[S]68", "SLRr Range Rover Evoque", 6]]],
             [".OSP Bolesław", "Bolesław", "ul. Główna 40, 47-451 Bolesław", 50.0055204696397, 18.201682780887566, true, [["567[S]59", "GBA 3/24 Renault G230/Camiva", 6]]],
             [".OSP KSRG Tworków", "Tworków", "ul. Główna 14, 47-451 Tworków", 50.00827430943702, 18.23470747644079, true, [["569[S]49", "GBA-Rt 2,5/16/2,5 Mercedes-Benz Atego 1329/Bocar", 6], ["569[S]50", "SLRr Tarpan Honker", 6]]],
-            [".OSP KSRG Krzyżanowice", "Krzyżanowice", "ul. Kościelna 4, 47-450 Krzyżanowice", 49.98080551025906, 18.26151363529378, true, [["569[S]46", "GBARt 4,5/16/4 Mercedes-Benz Atego 1629/Bocar", 6], ["569[S]47", "GBA 3/16 Star 1142/Osiny", 6], ["569[S]Ł1-46", " Przyczepa z łódką strażacką", 0]]],
+            [".OSP KSRG Krzyżanowice", "Krzyżanowice", "ul. Kościelna 4, 47-450 Krzyżanowice", 49.98080551025906, 18.26151363529378, true, [["569[S]46", "GBARt 4,5/16/4 Mercedes-Benz Atego 1629/Bocar", 6], ["569[S]47", "GBA 3/16 Star 1142/Osiny", 6], ["569[S]Ł1-46", "Przyczepa z łódką strażacką", 0]]],
             [".OSP Nowa Wioska", "Nowa Wioska", "ul. Główna 13, 47-450 Nowa Wioska", 49.974937885764454, 18.247570843486887, true, [["567[S]54", "GBA 3/16 Renault S170/Sairep", 6]]],
             [".OSP Owsiszcze", "Owsiszcze", "ul. Wojska Polskiego 2, 47-450 Owsiszcze", 49.97607075915978, 18.220268640108188, true, [["567[S]57", "GBA 3.6/24 Mercedes Atego 1630/Dragon", 6]]],
             [".OSP Roszków", "Roszków", "ul. Nowa 10, 47-450 Roszków", 49.96525454656683, 18.29949975248884, true, [["567[S]65", "GBA 2/16 Renault Midliner M210/WISS", 6]]],
             [".OSP Rudyszwałd", "Rudyszwałd", "ul. Zagumnie 31, 47-460 Rudyszwałd", 49.93872752612509, 18.291447758643443, true, [["567[S]61", "GBA 2,6/16 Magirus Deutz 192D11/Magirus", 6]]],
-            [".OSP KSRG Zabełkow", "Zabełkow", "ul. Rymera 2, 47-460 Zabełków", 49.9386015070148, 18.32377977508975, true, [["569[S]64", "GBA-Rt 3/30 Volvo FL 280/Bocar", 6]]],
+            [".OSP KSRG Zabełków", "Zabełków", "ul. Rymera 2, 47-460 Zabełków", 49.9386015070148, 18.32377977508975, true, [["569[S]64", "GBA-Rt 3/30 Volvo FL 280/Bocar", 6]]],
             [".OSP Chałupki", "Chałupki", "ul. Długa 39, 47-460 Chałupki", 49.92819731963414, 18.312755896924372, true, [["567[S]69", "GCBA 5/24 Jelcz 422/JZS", 6]]],
             [".OSP Ruda", "Ruda", "ul. Główna 22, 47-420 Ruda", 50.212466112098355, 18.25012900018634, true, [["567[S]81", "GLBM 0,3/13/0,5 Volkswagen T5/Strażak Sam", 6]]],
             [".OSP Budziska", "Budziska", "ul. Fabryczna 10A, 47-420 Budziska", 50.200770439950375, 18.279366417026797, true, [["567[S]83", "GBA 3/28 Renault D15/Szczęśniak", 6], ["567[S]84", "SLRr VW T4", 6]]],
