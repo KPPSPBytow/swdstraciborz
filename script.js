@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.28 (Racibórz Only)";
+const APP_VERSION = "SWDST 0.29 (Racibórz Only)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -122,7 +122,6 @@ let unitExactLocations = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(
 let unitsPSP = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(COUNTY_PROFILES.raciborski.unitsPSP)) : [];
 let unitsOSP = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(COUNTY_PROFILES.raciborski.unitsOSP)) : [];
 
-// WARTOŚĆ V2 ZAPEWNIA CZYSZCZENIE STAREGO CACHE Z AUTO-WEJHEROWO/STARYCH FLOT
 function getStorageKeyForCounty(countyId) { return `SWDST_SAVED_SHIFT_STATE_${countyId}_V2`; }
 
 function getFormattedOperatorName() {
@@ -1938,6 +1937,7 @@ function openEditEventModal(id) {
     if(modalEl) modalEl.style.display = 'flex';
 }
 
+// --- BLOKADA ZADYSOPNOWANIA ZAJĘTYCH POJAZDÓW ---
 function openDispatchModal() {
     const container = document.getElementById('dispatch-list');
     const infoBar = document.getElementById('dispatch-info-bar');
@@ -1972,13 +1972,25 @@ function openDispatchModal() {
             </div>
             ${u.vehicles.map(v => {
                 const pzrEv = getActivePzrForVehicle(v.id);
-                const pzrLabel = pzrEv ? `<span style="margin-left:auto; background:#f1c40f; color:#000; padding:1px 5px; border-radius:2px; font-weight:bold; font-size:10px;">🛡️ PZR (${pzrEv.city})</span>` : '';
+                const inCombat = isVehicleInCombatAction(v.id);
+                const isAssignedToThisEvent = selectedVehicles.some(sv => sv.id === v.id);
+
+                let isBlocked = false;
+                let statusBadge = '';
+                
+                if (inCombat && !isAssignedToThisEvent) {
+                    isBlocked = true;
+                    statusBadge = `<span style="margin-left:auto; background:#c0392b; color:#fff; padding:1px 5px; border-radius:2px; font-weight:bold; font-size:10px;">🚨 W AKCJI</span>`;
+                } else if (pzrEv) {
+                    statusBadge = `<span style="margin-left:auto; background:#f1c40f; color:#000; padding:1px 5px; border-radius:2px; font-weight:bold; font-size:10px;">🛡️ PZR (${pzrEv.city})</span>`;
+                }
+
                 return `
-                    <label class="dispatch-vehicle-item" style="cursor:pointer; color:#000000; ${pzrEv ? 'background:#fff8c4;' : ''}">
-                        <input type="checkbox" value="${v.id}" ${selectedVehicles.some(sv => sv.id === v.id) ? 'checked' : ''}>
+                    <label class="dispatch-vehicle-item" style="cursor:${isBlocked ? 'not-allowed' : 'pointer'}; color:${isBlocked ? '#888888' : '#000000'}; ${isBlocked ? 'background:#f2f2f2; opacity:0.75;' : (pzrEv ? 'background:#fff8c4;' : '')}">
+                        <input type="checkbox" value="${v.id}" ${isAssignedToThisEvent ? 'checked' : ''} ${isBlocked ? 'disabled' : ''}>
                         <span class="status-dot ${v.status}"></span>
                         <span><b>${v.id}</b> - ${v.name}</span>
-                        ${pzrLabel}
+                        ${statusBadge}
                     </label>
                 `;
             }).join('')}
@@ -1997,13 +2009,14 @@ function confirmDispatch() {
     const newSelection = [];
 
     checkboxes.forEach(cb => {
-        const existing = selectedVehicles.find(sv => sv.id === cb.value);
+        const vehId = cb.value;
+        const existing = selectedVehicles.find(sv => sv.id === vehId);
         if (existing) {
             newSelection.push(existing);
         } else {
             [...unitsPSP, ...unitsOSP].forEach(u => {
-                const v = u.vehicles.find(veh => veh.id === cb.value);
-                if (v) {
+                const v = u.vehicles.find(veh => veh.id === vehId);
+                if (v && !isVehicleInCombatAction(v.id)) {
                     const pzrEv = getActivePzrForVehicle(v.id);
                     const prepSec = pzrEv ? (Math.floor(Math.random() * 5) + 1) : generateDeparturePrepSeconds(u.name);
                     const routeSec = calculateRouteTravelSeconds(u.name, targetCity);
