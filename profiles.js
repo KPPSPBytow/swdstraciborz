@@ -1,6 +1,5 @@
 // --- BAZA PROFILI POWIATÓW I ULIC (POWIAT RACIBORSKI) ---
-const RAW_PROFILES = [
-{
+var RAW_PROFILES = [{
 id: "raciborski",
 name: "KP PSP Racibórz (Powiat Raciborski)",
 radioCallsign: "Racibórz 998",
