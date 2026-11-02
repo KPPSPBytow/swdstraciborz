@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.31 (Racibórz Only - Fixed OSRM Routing)";
+const APP_VERSION = "SWDST 0.31,5 (Racibórz Only - Fixed OSRM Routing)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
