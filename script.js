@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.29 (Racibórz Only)";
+const APP_VERSION = "SWDST 0.29,5 (Racibórz Only)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
