@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.29,5 (Racibórz Only)";
+const APP_VERSION = "SWDST 0.30 (Racibórz Only - Real OSRM Routing)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -286,31 +286,71 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// --- SILNIK PRAWDZIWEGO ROUTINGU DROGOWEGO OSRM ---
+async function getRoadRouting(lat1, lon1, lat2, lon2) {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // Max 3.5 sekundy oczekiwania na OSRM
+        const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.routes && data.routes.length > 0) {
+                const route = data.routes[0];
+                return {
+                    distanceKm: route.distance / 1000, // odległość drogowa w km
+                    durationSec: route.duration        // czas przejazdu w sekundach
+                };
+            }
+        }
+    } catch (e) {}
+    return null; // Awaryjnie zwraca null, uruchamiając fallback
+}
+
+async function getUnitProximityAsync(unitName, city) {
+    const firstUnitKey = Object.keys(unitExactLocations)[0];
+    const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
+    const defaultTown = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].defaultTown : "Racibórz";
+    const targetTown = Object.keys(gpsCoords).find(c => c.toLowerCase() === (city || "").trim().toLowerCase()) || defaultTown;
+    const tCoords = gpsCoords[targetTown] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+
+    let kmRounded = 1.5;
+    let travelSec = 10;
+
+    if (unitLoc && tCoords) {
+        // Próba pobrania trasy po realnych drogach z OpenStreetMap (OSRM)
+        const roadRoute = await getRoadRouting(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]);
+        if (roadRoute) {
+            kmRounded = Math.max(1.0, Math.round(roadRoute.distanceKm * 10) / 10);
+            // Czas przejazdu wozem bojowym (uwzględniając sygnały uprzywilejowania, lekka korekta współczynnika prędkości)
+            travelSec = Math.max(8, Math.round(roadRoute.duration * 0.85));
+        } else {
+            // Fallback (linia prosta + współczynnik krętości dróg)
+            const fallbackDist = haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25;
+            kmRounded = Math.max(1.2, Math.round(fallbackDist * 10) / 10);
+            travelSec = Math.max(10, Math.round(kmRounded * 45)); // ok. 45s na kilometr trasą
+        }
+    }
+    return { sec: travelSec, kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
+}
+
+// Synchroniczna wersja pomocnicza do natychmiastowego wywołania z domyślnym fallbackiem
 function getUnitProximity(unitName, city) {
     const firstUnitKey = Object.keys(unitExactLocations)[0];
     const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
     const defaultTown = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].defaultTown : "Racibórz";
     const targetTown = Object.keys(gpsCoords).find(c => c.toLowerCase() === (city || "").trim().toLowerCase()) || defaultTown;
+    const tCoords = gpsCoords[targetTown] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
 
-    let kmRounded = 1.5;
-    if (unitLoc && unitLoc.town.toLowerCase() === targetTown.toLowerCase()) {
-        kmRounded = unitName.includes("JRG") ? 1.5 : 1.8;
-    } else if (unitLoc) {
-        const tCoords = gpsCoords[targetTown] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
-        const roadDist = haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25;
-        kmRounded = Math.max(1.5, Math.round(roadDist * 10) / 10);
-    }
-    return { sec: Math.max(5, Math.round(kmRounded * 4)), kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
+    const dist = unitLoc ? haversineKm(unitLoc.lat, unitLoc.lng, tCoords[0], tCoords[1]) * 1.25 : 2.5;
+    const kmRounded = Math.max(1.2, Math.round(dist * 10) / 10);
+    return { sec: Math.max(10, Math.round(kmRounded * 45)), kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
 }
 
 function generateDeparturePrepSeconds(unitName) {
     const isPSP = unitName.includes("JRG") || unitName.includes("KP PSP") || unitName.includes("KM PSP");
     return isPSP ? (Math.floor(Math.random() * 5) + 1) : (Math.floor(Math.random() * 10) + 1);
-}
-
-function calculateRouteTravelSeconds(unitName, city) {
-    const prox = getUnitProximity(unitName, city);
-    return Math.max(5, Math.round(prox.kmNum * (3.5 + Math.random())));
 }
 
 function calculateActionDurationSeconds(desc, subtype, type) {
@@ -1937,8 +1977,8 @@ function openEditEventModal(id) {
     if(modalEl) modalEl.style.display = 'flex';
 }
 
-// --- BLOKADA ZADYSOPNOWANIA ZAJĘTYCH POJAZDÓW ---
-function openDispatchModal() {
+// --- OKNO DYSPONOWANIA Z ROUTINGIEM OSRM ---
+async function openDispatchModal() {
     const container = document.getElementById('dispatch-list');
     const infoBar = document.getElementById('dispatch-info-bar');
     const cityInput = document.getElementById('inp-ev-city');
@@ -1946,18 +1986,33 @@ function openDispatchModal() {
     
     if(!container) return;
     const targetCity = cityInput ? cityInput.value.trim() : "";
-    container.innerHTML = '';
-
+    
     if(infoBar) {
-        infoBar.innerHTML = targetCity ? `📍 Kolejność wg odległości dla: <span style="color:#b30000;">${targetCity}</span>` : `⚠️ Brak miejscowości`;
+        infoBar.innerHTML = targetCity ? `📍 Przeliczanie tras drogowych (OSRM) dla: <span style="color:#b30000;">${targetCity}</span>...` : `⚠️ Brak miejscowości`;
     }
 
-    const availableUnits = [...unitsPSP, ...unitsOSP]
-        .filter(u => u.vehicles.length > 0)
-        .map(u => ({ ...u, ...getUnitProximity(u.name, targetCity) }))
-        .sort((a, b) => a.sec - b.sec);
+    container.innerHTML = `<div style="padding: 15px; text-align: center; color: #555; font-weight: bold;">⏳ Pobieranie realnych tras drogowych z OpenStreetMap...</div>`;
+    if(modalDisp) modalDisp.style.display = 'flex';
 
-    availableUnits.forEach((u, index) => {
+    // Asynchroniczne wyliczenie odległości po drogach dla wszystkich jednostek
+    const unitsWithProximity = await Promise.all(
+        [...unitsPSP, ...unitsOSP]
+            .filter(u => u.vehicles.length > 0)
+            .map(async u => {
+                const prox = await getUnitProximityAsync(u.name, targetCity);
+                return { ...u, ...prox };
+            })
+    );
+
+    unitsWithProximity.sort((a, b) => a.sec - b.sec);
+
+    if(infoBar) {
+        infoBar.innerHTML = targetCity ? `📍 Kolejność wg tras drogowych (OSRM) dla: <span style="color:#b30000;">${targetCity}</span>` : `⚠️ Brak miejscowości`;
+    }
+
+    container.innerHTML = '';
+
+    unitsWithProximity.forEach((u, index) => {
         const isClosest = index === 0 && targetCity !== "";
         const exactAddr = unitExactLocations[u.name]?.address || "";
         const isPSP = u.name.includes("JRG") || u.name.includes("KP PSP") || u.name.includes("KM PSP");
@@ -1968,7 +2023,7 @@ function openDispatchModal() {
         groupDiv.innerHTML = `
             <div class="dispatch-unit-header ${isClosest ? 'closest' : ''}" title="${exactAddr}">
                 <span>${index + 1}. ${u.name} <small style="font-weight:normal; color:#333;">(${exactAddr})</small> ${isClosest ? '⭐' : ''}</span>
-                <span>${u.km} | Jazda: ~${formatMMSS(u.sec)} (${prepRange})</span>
+                <span>${u.km} | Droga: ~${formatMMSS(u.sec)} (${prepRange})</span>
             </div>
             ${u.vehicles.map(v => {
                 const pzrEv = getActivePzrForVehicle(v.id);
@@ -1997,37 +2052,37 @@ function openDispatchModal() {
         `;
         container.appendChild(groupDiv);
     });
-
-    if(modalDisp) modalDisp.style.display = 'flex';
 }
 
-function confirmDispatch() {
+async function confirmDispatch() {
     const checkboxes = document.querySelectorAll('#dispatch-list input:checked');
     const cityInput = document.getElementById('inp-ev-city');
     const defTown = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].defaultTown : "Racibórz";
     const targetCity = (cityInput && cityInput.value.trim()) ? cityInput.value.trim() : defTown;
     const newSelection = [];
 
-    checkboxes.forEach(cb => {
+    for (const cb of checkboxes) {
         const vehId = cb.value;
         const existing = selectedVehicles.find(sv => sv.id === vehId);
         if (existing) {
             newSelection.push(existing);
         } else {
-            [...unitsPSP, ...unitsOSP].forEach(u => {
+            for (const u of [...unitsPSP, ...unitsOSP]) {
                 const v = u.vehicles.find(veh => veh.id === vehId);
                 if (v && !isVehicleInCombatAction(v.id)) {
                     const pzrEv = getActivePzrForVehicle(v.id);
                     const prepSec = pzrEv ? (Math.floor(Math.random() * 5) + 1) : generateDeparturePrepSeconds(u.name);
-                    const routeSec = calculateRouteTravelSeconds(u.name, targetCity);
+                    const prox = await getUnitProximityAsync(u.name, targetCity);
+                    const routeSec = prox.sec;
                     newSelection.push({
                         ...v, unitName: u.name, phase: 'PREP', prepTime: prepSec,
                         travelTime: routeSec, baseRouteSeconds: routeSec, returnTime: routeSec
                     });
+                    break;
                 }
-            });
+            }
         }
-    });
+    }
 
     selectedVehicles = newSelection;
     const countLbl = document.getElementById('lbl-selected-count');
@@ -2053,71 +2108,74 @@ function saveEvent() {
     const streetInput = document.getElementById('inp-ev-street');
     const streetVal = streetInput ? streetInput.value.trim() : '';
 
-    selectedVehicles.forEach(sv => {
-        if (!sv.phase) {
-            sv.phase = 'PREP';
-            sv.prepTime = generateDeparturePrepSeconds(sv.unitName);
-            const routeSec = calculateRouteTravelSeconds(sv.unitName, city);
-            sv.travelTime = routeSec; sv.baseRouteSeconds = routeSec; sv.returnTime = routeSec;
+    // Asynchroniczne przeliczenie tras dla wybranych wozów przed zapisem
+    (async () => {
+        for (const sv of selectedVehicles) {
+            if (!sv.phase) {
+                sv.phase = 'PREP';
+                sv.prepTime = generateDeparturePrepSeconds(sv.unitName);
+                const prox = await getUnitProximityAsync(sv.unitName, city);
+                sv.travelTime = prox.sec; sv.baseRouteSeconds = prox.sec; sv.returnTime = prox.sec;
+            }
         }
-    });
 
-    let targetEventObj = null;
+        let targetEventObj = null;
 
-    if (activeEditingId === null) {
-        let countedOspNames = [];
+        if (activeEditingId === null) {
+            let countedOspNames = [];
+            selectedVehicles.forEach(sv => {
+                if (!sv.unitName.includes("JRG") && !sv.unitName.includes("KP PSP") && !sv.unitName.includes("KM PSP") && !countedOspNames.includes(sv.unitName)) {
+                    countedOspNames.push(sv.unitName);
+                }
+            });
+            playOspAlarmRepeated(countedOspNames.length);
+
+            const timeInput = document.getElementById('inp-ev-time');
+            const regInput = document.getElementById('inp-ev-region');
+            const jrgInput = document.getElementById('inp-ev-jrg');
+            const fallback = gpsCoords[city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
+            const calcDuration = calculateActionDurationSeconds(descVal, subtypeVal, typeVal);
+            const defJrg = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].jrgList[0] : "JRG Racibórz";
+
+            const newEv = {
+                id: events.length + 1,
+                time: timeInput && timeInput.value ? timeInput.value : new Date().toLocaleTimeString(),
+                city: city,
+                region: regInput ? regInput.value : (locationsDatabase[city] || ''),
+                street: streetVal,
+                lat: fallback[0], lng: fallback[1],
+                desc: descVal, type: typeVal, subtype: subtypeVal,
+                remainingSeconds: calcDuration, firstArrived: false, radioReported: false, radioLogs: [],
+                jrg: jrgInput ? jrgInput.value : defJrg,
+                services: { ...servicesState },
+                vehicles: [...selectedVehicles],
+                status: 'ACTIVE'
+            };
+            events.push(newEv);
+            targetEventObj = newEv;
+            selectEvent(newEv.id);
+        } else {
+            const ev = events.find(e => e.id === activeEditingId);
+            if (ev) {
+                ev.city = city; ev.street = streetVal; ev.desc = descVal; ev.type = typeVal;
+                ev.subtype = subtypeVal; ev.services = { ...servicesState }; ev.vehicles = [...selectedVehicles];
+                targetEventObj = ev;
+            }
+        }
+
         selectedVehicles.forEach(sv => {
-            if (!sv.unitName.includes("JRG") && !sv.unitName.includes("KP PSP") && !sv.unitName.includes("KM PSP") && !countedOspNames.includes(sv.unitName)) {
-                countedOspNames.push(sv.unitName);
-            }
+            [...unitsPSP, ...unitsOSP].forEach(u => {
+                const v = u.vehicles.find(veh => veh.id === sv.id);
+                if (v) {
+                    if (typeVal === 'PZR') v.status = 'yellow';
+                    else if (v.status === 'green' || v.status === 'yellow') v.status = 'orange';
+                }
+            });
         });
-        playOspAlarmRepeated(countedOspNames.length);
 
-        const timeInput = document.getElementById('inp-ev-time');
-        const regInput = document.getElementById('inp-ev-region');
-        const jrgInput = document.getElementById('inp-ev-jrg');
-        const fallback = gpsCoords[city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
-        const calcDuration = calculateActionDurationSeconds(descVal, subtypeVal, typeVal);
-        const defJrg = COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].jrgList[0] : "JRG Racibórz";
-
-        const newEv = {
-            id: events.length + 1,
-            time: timeInput && timeInput.value ? timeInput.value : new Date().toLocaleTimeString(),
-            city: city,
-            region: regInput ? regInput.value : (locationsDatabase[city] || ''),
-            street: streetVal,
-            lat: fallback[0], lng: fallback[1],
-            desc: descVal, type: typeVal, subtype: subtypeVal,
-            remainingSeconds: calcDuration, firstArrived: false, radioReported: false, radioLogs: [],
-            jrg: jrgInput ? jrgInput.value : defJrg,
-            services: { ...servicesState },
-            vehicles: [...selectedVehicles],
-            status: 'ACTIVE'
-        };
-        events.push(newEv);
-        targetEventObj = newEv;
-        selectEvent(newEv.id);
-    } else {
-        const ev = events.find(e => e.id === activeEditingId);
-        if (ev) {
-            ev.city = city; ev.street = streetVal; ev.desc = descVal; ev.type = typeVal;
-            ev.subtype = subtypeVal; ev.services = { ...servicesState }; ev.vehicles = [...selectedVehicles];
-            targetEventObj = ev;
-        }
-    }
-
-    selectedVehicles.forEach(sv => {
-        [...unitsPSP, ...unitsOSP].forEach(u => {
-            const v = u.vehicles.find(veh => veh.id === sv.id);
-            if (v) {
-                if (typeVal === 'PZR') v.status = 'yellow';
-                else if (v.status === 'green' || v.status === 'yellow') v.status = 'orange';
-            }
-        });
-    });
-
-    if (targetEventObj) geocodeEventAddress(targetEventObj);
-    renderUnits(); renderEvents(); saveSimulationState(); closeModal('modal-event');
+        if (targetEventObj) geocodeEventAddress(targetEventObj);
+        renderUnits(); renderEvents(); saveSimulationState(); closeModal('modal-event');
+    })();
 }
 
 function triggerEventFinishAndReturn(ev) {
