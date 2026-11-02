@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.31,5 (Racibórz Only - Fixed OSRM Routing)";
+const APP_VERSION = "SWDST 0.32 (Racibórz Only - Moving Units & OSRM Routing)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -290,7 +290,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 async function getRoadRouting(lat1, lon1, lat2, lon2) {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500); // Krótki timeout, aby aplikacja działała płynnie
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
         const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -307,7 +307,7 @@ async function getRoadRouting(lat1, lon1, lat2, lon2) {
             }
         }
     } catch (e) {}
-    return null; // W razie błędu lub timeoutu zwraca null -> używa bezpiecznego fallbacku
+    return null;
 }
 
 async function getUnitProximityAsync(unitName, city) {
@@ -334,7 +334,6 @@ async function getUnitProximityAsync(unitName, city) {
     return { sec: travelSec, kmNum: kmRounded, km: `${kmRounded.toFixed(1)} km` };
 }
 
-// Synchroniczna wersja awaryjna
 function getUnitProximity(unitName, city) {
     const firstUnitKey = Object.keys(unitExactLocations)[0];
     const unitLoc = unitExactLocations[unitName] || unitExactLocations[firstUnitKey];
@@ -764,7 +763,7 @@ function focusEventOnMap(evId) {
     }, 250);
 }
 
-// --- MAPA OPERACYJNA LEAFLET ---
+// --- MAPA OPERACYJNA LEAFLET Z PORUSZAJĄCYMI SIĘ ZASTĘPAMI ---
 let leafletMap = null, mapMarkersLayer = null;
 
 function ensureLeafletLoaded(callback) {
@@ -800,6 +799,7 @@ function updateMapMarkers() {
     if (!leafletMap || !mapMarkersLayer || !window.L) return;
     mapMarkersLayer.clearLayers();
 
+    // 1. Markery stacjonarne jednostek (koszary)
     [...unitsPSP, ...unitsOSP].forEach(u => {
         const firstKey = Object.keys(unitExactLocations)[0];
         const loc = unitExactLocations[u.name] || unitExactLocations[firstKey];
@@ -809,10 +809,10 @@ function updateMapMarkers() {
         const hasPzrVeh = u.vehicles.some(v => v.status === 'yellow');
         const borderColor = hasPzrVeh ? "#d4ac0d" : (isPSP ? "#b30000" : "#0a246a");
         const bgBadge = hasPzrVeh ? "#ffe875" : (isPSP ? "#ffe6e6" : "#ffffff");
+        
         const vehListHtml = u.vehicles.map(v => {
             const color = v.status === 'green' ? '#1e8449' : (v.status === 'yellow' ? '#d4ac0d' : (v.status === 'orange' ? '#d68910' : '#c0392b'));
-            const pzrTag = v.status === 'yellow' ? ' <b style="color:#b38600;">[PZR]</b>' : '';
-            return `<div style="font-size:11px; color:#000;"><span style="color:${color}; font-weight:bold;">●</span> <b>${v.id}</b> - ${v.name}${pzrTag}</div>`;
+            return `<div style="font-size:11px; color:#000;"><span style="color:${color}; font-weight:bold;">●</span> <b>${v.id}</b> - ${v.name}</div>`;
         }).join('');
 
         const marker = L.marker([loc.lat, loc.lng], {
@@ -826,11 +826,52 @@ function updateMapMarkers() {
         mapMarkersLayer.addLayer(marker);
     });
 
+    // 2. Markery poruszających się zastępów w drodze / powrocie (z kryptonimem)
     events.forEach(ev => {
         if (ev.status !== 'ACTIVE') return;
         const fallback = gpsCoords[ev.city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
         const evLat = ev.lat || fallback[0], evLng = ev.lng || fallback[1];
 
+        ev.vehicles.forEach(v => {
+            if ((v.phase === 'TRAVEL' || v.phase === 'RETURN') && v.baseRouteSeconds > 0) {
+                const unitLoc = unitExactLocations[v.unitName] || Object.values(unitExactLocations)[0];
+                if (!unitLoc) return;
+
+                let progress = 1.0;
+                if (v.phase === 'TRAVEL') {
+                    progress = Math.max(0, Math.min(1, 1 - (v.travelTime / v.baseRouteSeconds)));
+                    const currLat = unitLoc.lat + (evLat - unitLoc.lat) * progress;
+                    const currLng = unitLoc.lng + (evLng - unitLoc.lng) * progress;
+
+                    const movingMarker = L.marker([currLat, currLng], {
+                        icon: L.divIcon({
+                            className: '',
+                            html: `<div style="transform:translate(-50%, -50%); background:#ff4d4d; color:#ffffff; border:2px solid #800000; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 6px rgba(0,0,0,0.6);">🚒 ${v.id} (Dojazd)</div>`,
+                            iconSize: [0, 0], iconAnchor: [0, 0]
+                        })
+                    });
+                    movingMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Dojazd do ${ev.city}</div>`);
+                    mapMarkersLayer.addLayer(movingMarker);
+
+                } else if (v.phase === 'RETURN') {
+                    progress = Math.max(0, Math.min(1, 1 - (v.returnTime / v.baseRouteSeconds)));
+                    const currLat = evLat + (unitLoc.lat - evLat) * progress;
+                    const currLng = evLng + (unitLoc.lng - evLng) * progress;
+
+                    const returnMarker = L.marker([currLat, currLng], {
+                        icon: L.divIcon({
+                            className: '',
+                            html: `<div style="transform:translate(-50%, -50%); background:#3498db; color:#ffffff; border:2px solid #1b4f72; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 6px rgba(0,0,0,0.6);">🚒 ${v.id} (Powrót)</div>`,
+                            iconSize: [0, 0], iconAnchor: [0, 0]
+                        })
+                    });
+                    returnMarker.bindPopup(`<div style="color:#000;"><b>Zastęp:</b> ${v.id}<br><b>Jednostka:</b> ${v.unitName}<br><b>Kierunek:</b> Powrót do bazy</div>`);
+                    mapMarkersLayer.addLayer(returnMarker);
+                }
+            }
+        });
+
+        // 3. Markery samego zdarzenia
         const isPZR = ev.type === 'PZR';
         const bgEv = isPZR ? '#fff3a1' : '#ffcccc';
         const borderEv = isPZR ? '#d4ac0d' : '#b30000';
@@ -2002,7 +2043,6 @@ async function openDispatchModal() {
         })
     );
 
-    // Sortowanie alfabetyczne po odległości (najbliższe pierwsze)
     unitsWithProximity.sort((a, b) => a.sec - b.sec);
 
     if(infoBar) {
@@ -2347,7 +2387,7 @@ function runSimulationTick() {
         }
     });
 
-    if (needsRender) { renderUnits(); renderEvents(); saveSimulationState(); }
+    if (needsRender) { renderUnits(); renderEvents(); updateMapMarkers(); saveSimulationState(); }
     renderSelectedEventDetails();
     ensureVersionBadgeInStatusBar();
 
