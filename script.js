@@ -1,5 +1,5 @@
 // --- STAŁA WERSJI APLIKACJI SWDST ---
-const APP_VERSION = "SWDST 0.32 (Racibórz Only - Moving Units & OSRM Routing)";
+const APP_VERSION = "SWDST 0.33 (Racibórz Only - Smooth Moving Units & OSRM)";
 
 // --- MODUŁ AUDIO ---
 const audioSelekt = new Audio('selekt.wav');
@@ -763,7 +763,7 @@ function focusEventOnMap(evId) {
     }, 250);
 }
 
-// --- MAPA OPERACYJNA LEAFLET Z PORUSZAJĄCYMI SIĘ ZASTĘPAMI ---
+// --- MAPA OPERACYJNA LEAFLET Z PŁYNNYM RUCHEM ZASTĘPÓW ---
 let leafletMap = null, mapMarkersLayer = null;
 
 function ensureLeafletLoaded(callback) {
@@ -826,7 +826,7 @@ function updateMapMarkers() {
         mapMarkersLayer.addLayer(marker);
     });
 
-    // 2. Markery poruszających się zastępów w drodze / powrocie (z kryptonimem)
+    // 2. Aktywne zdarzenia oraz płynnie poruszające się zastępy (z kryptonimem)
     events.forEach(ev => {
         if (ev.status !== 'ACTIVE') return;
         const fallback = gpsCoords[ev.city] || (COUNTY_PROFILES[currentCountyId] ? COUNTY_PROFILES[currentCountyId].mapCenter : [50.0919, 18.2198]);
@@ -837,7 +837,7 @@ function updateMapMarkers() {
                 const unitLoc = unitExactLocations[v.unitName] || Object.values(unitExactLocations)[0];
                 if (!unitLoc) return;
 
-                let progress = 1.0;
+                let progress = 0;
                 if (v.phase === 'TRAVEL') {
                     progress = Math.max(0, Math.min(1, 1 - (v.travelTime / v.baseRouteSeconds)));
                     const currLat = unitLoc.lat + (evLat - unitLoc.lat) * progress;
@@ -846,7 +846,7 @@ function updateMapMarkers() {
                     const movingMarker = L.marker([currLat, currLng], {
                         icon: L.divIcon({
                             className: '',
-                            html: `<div style="transform:translate(-50%, -50%); background:#ff4d4d; color:#ffffff; border:2px solid #800000; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 6px rgba(0,0,0,0.6);">🚒 ${v.id} (Dojazd)</div>`,
+                            html: `<div style="transform:translate(-50%, -50%); background:#e74c3c; color:#ffffff; border:2px solid #78281f; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 8px rgba(0,0,0,0.6); animation: pulse 1s infinite;">🚒 ${v.id} (Dojazd)</div>`,
                             iconSize: [0, 0], iconAnchor: [0, 0]
                         })
                     });
@@ -861,7 +861,7 @@ function updateMapMarkers() {
                     const returnMarker = L.marker([currLat, currLng], {
                         icon: L.divIcon({
                             className: '',
-                            html: `<div style="transform:translate(-50%, -50%); background:#3498db; color:#ffffff; border:2px solid #1b4f72; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 6px rgba(0,0,0,0.6);">🚒 ${v.id} (Powrót)</div>`,
+                            html: `<div style="transform:translate(-50%, -50%); background:#3498db; color:#ffffff; border:2px solid #1b4f72; border-radius:12px; padding:2px 8px; font-size:11px; font-weight:bold; white-space:nowrap; box-shadow:0 0 8px rgba(0,0,0,0.6);">🚒 ${v.id} (Powrót)</div>`,
                             iconSize: [0, 0], iconAnchor: [0, 0]
                         })
                     });
@@ -871,7 +871,7 @@ function updateMapMarkers() {
             }
         });
 
-        // 3. Markery samego zdarzenia
+        // 3. Marker samego zdarzenia
         const isPZR = ev.type === 'PZR';
         const bgEv = isPZR ? '#fff3a1' : '#ffcccc';
         const borderEv = isPZR ? '#d4ac0d' : '#b30000';
@@ -2387,7 +2387,12 @@ function runSimulationTick() {
         }
     });
 
-    if (needsRender) { renderUnits(); renderEvents(); updateMapMarkers(); saveSimulationState(); }
+    // Zawsze odświeżamy mapę w ticku, aby animacja ruchu zastępów była w pełni płynna
+    renderUnits(); 
+    renderEvents(); 
+    updateMapMarkers(); 
+    saveSimulationState();
+
     renderSelectedEventDetails();
     ensureVersionBadgeInStatusBar();
 
