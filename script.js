@@ -122,7 +122,8 @@ let unitExactLocations = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(
 let unitsPSP = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(COUNTY_PROFILES.raciborski.unitsPSP)) : [];
 let unitsOSP = COUNTY_PROFILES.raciborski ? JSON.parse(JSON.stringify(COUNTY_PROFILES.raciborski.unitsOSP)) : [];
 
-function getStorageKeyForCounty(countyId) { return `SWDST_SAVED_SHIFT_STATE_${countyId}_V1`; }
+// WARTOŚĆ V2 ZAPEWNIA CZYSZCZENIE STAREGO CACHE Z AUTO-WEJHEROWO/STARYCH FLOT
+function getStorageKeyForCounty(countyId) { return `SWDST_SAVED_SHIFT_STATE_${countyId}_V2`; }
 
 function getFormattedOperatorName() {
     return (currentUserName && currentUserName.trim() !== "")
